@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+
+import sys
+import rospy
+import signal
+from geometry_msgs.msg import Twist
+#Использовать pyqt5 вместо python_qt_biding для упрощения поиска методов
+# from python_qt_binding import QtCore, QtWidgets, QtGui
+# from python_qt_binding.QtCore import Qt
+from PyQt5 import QtCore, QtWidgets, QtGui
+from PyQt5.QtCore import Qt
+
+
+class Ui_Form(QtWidgets.QWidget):
+    def __init__(self):
+        super(Ui_Form, self).__init__()
+        self.setObjectName('WASDPlugin')
+        self._widget = self.setupUi(self)
+        rospy.init_node('controller')
+        self.publusher = rospy.Publisher(f'robot1/cmd_vel', Twist, queue_size=10)
+        self.signal = QtCore.pyqtSignal()
+        
+        self.pushButton_w.clicked.connect(self.get_push_func(QtCore.Qt.Key_W, 'w'))
+        self.pushButton_s.clicked.connect(self.get_push_func(QtCore.Qt.Key_S, 's'))
+        self.pushButton_d.clicked.connect(self.get_push_func(QtCore.Qt.Key_D, 'd'))
+        self.pushButton_a.clicked.connect(self.get_push_func(QtCore.Qt.Key_A, 'a'))
+
+
+    def setupUi(self, Form):
+        Form.setObjectName("Form")
+        Form.setFixedSize(370, 240)
+        self.pushButton_w = QtWidgets.QPushButton(Form)
+        self.pushButton_w.setGeometry(QtCore.QRect(140, 40, 91, 81))
+        font = QtGui.QFont()
+        font.setPointSize(20)
+        self.pushButton_w.setFont(font)
+        self.pushButton_w.setObjectName("pushButton_w")
+        self.pushButton_s = QtWidgets.QPushButton(Form)
+        self.pushButton_s.setGeometry(QtCore.QRect(140, 120, 91, 81))
+        font = QtGui.QFont()
+        font.setPointSize(20)
+        self.pushButton_s.setFont(font)
+        self.pushButton_s.setObjectName("pushButton_s")
+        self.pushButton_a = QtWidgets.QPushButton(Form)
+        self.pushButton_a.setGeometry(QtCore.QRect(50, 120, 91, 81))
+        font = QtGui.QFont()
+        font.setPointSize(20)
+        self.pushButton_a.setFont(font)
+        self.pushButton_a.setObjectName("pushButton_a")
+        self.pushButton_d = QtWidgets.QPushButton(Form)
+        self.pushButton_d.setGeometry(QtCore.QRect(230, 120, 91, 81))
+        font = QtGui.QFont()
+        font.setPointSize(20)
+        self.pushButton_d.setFont(font)
+        self.pushButton_d.setObjectName("pushButton_d")
+
+
+
+        self.retranslateUi(Form)
+        QtCore.QMetaObject.connectSlotsByName(Form)
+
+    def get_push_func(self, key, text):
+        def func(req):
+            event = QtGui.QKeyEvent(QtCore.QEvent.KeyPress, key, QtCore.Qt.NoModifier, text)
+            self.keyPressEvent(event)
+        return func
+
+    def keyPressEvent(self, event):
+        msg = Twist()
+        if event.text() not in ['w', 's', 'a', 'd']:
+            return
+        if event.key() == Qt.Key_W:
+            msg.linear.x = 2.0
+        elif (event.key() == Qt.Key_S):
+            msg.linear.x = -2.0
+        elif (event.key() == Qt.Key_A):
+            msg.angular.z = -5
+        elif (event.key() == Qt.Key_D):
+            msg.angular.z = 5
+        self.publusher.publish(msg)
+
+    def retranslateUi(self, Form):
+        _translate = QtCore.QCoreApplication.translate
+        Form.setWindowTitle(_translate("Form", "Form"))
+        self.pushButton_w.setText(_translate("Form", "W"))
+        self.pushButton_s.setText(_translate("Form", "S"))
+        self.pushButton_a.setText(_translate("Form", "A"))
+        self.pushButton_d.setText(_translate("Form", "D"))
+
+def handler(*args):
+    QtWidgets.QApplication.quit()
+
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    signal.signal(signal.SIGINT, handler)
+    timer = QtCore.QTimer()
+    timer.start(500)
+    timer.timeout.connect(lambda: None)
+    
+    pyShow = Ui_Form()
+    pyShow.show()
+    sys.exit(app.exec_())

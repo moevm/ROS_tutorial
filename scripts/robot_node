@@ -10,7 +10,8 @@ from geometry_msgs.msg import Twist, Pose
 from PyQt5 import QtCore, QtWidgets, QtGui
 # from python_qt_binding import QtCore, QtWidgets, QtGui
 from ros_tutorial.srv import Kill, KillResponse, SetPose, SetPoseResponse, \
-    Spawn, SpawnResponse, SetWall, SetWallResponse, OnOffLaser, OnOffLaserResponse
+    Spawn, SpawnResponse, SetWall, SetWallResponse, OnOffLaser, OnOffLaserResponse, \
+    SetLaserColor, SetLaserColorResponse
 from ros_tutorial.msg import ObjectsArray, ObjectOnScene
 
 #при спавне робота или стены, проверять, что нет пересечений с другими роботами
@@ -90,16 +91,24 @@ class Robot():
         self.scan = Scaner(parent_id=self.name)
         self.points = []
         self.draw_laser = laser_on
+        self.laser_color = (255, 0, 0)
+
 
     #добавить сервис для on/off лазера, сервис изменения цвета лазера, сервис изменения линии на точку
     def set_services(self, set_pose, kill):
         self.set_pose = set_pose
         self.kill = kill
         self.on_off_laser = rospy.Service(f'{self.name}/on_off_laser', OnOffLaser, self.change_draw_state)
+        self.set_laser_color = rospy.Service(f'{self.name}/set_laser_color', SetLaserColor, self.set_laser_color)
 
     def change_draw_state(self, msg):
         self.draw_laser = not self.draw_laser
         return OnOffLaserResponse(self.draw_laser)
+
+    def set_laser_color(self, msg):
+        print(msg)
+        self.laser_color = (msg.r, msg.g, msg.b)
+        return SetLaserColorResponse(*self.laser_color)
 
     def shutdown_service(self):
         self.set_pose.shutdown()
@@ -189,7 +198,7 @@ class Ui_Form(QtWidgets.QWidget):
         # self.robots_dict.update({'robot2': Robot(name='robot2', x=50, y=50, angle=pi/4)})
         
         self.init_ros()
-        self.redPen = QtGui.QPen(QtGui.QColor(255, 0, 0))
+        self.pen = QtGui.QPen(QtGui.QColor(255, 0, 0))
         self.blackPen = QtGui.QPen(QtGui.QColor(0, 0, 0))
         self.blackPen.setWidth(1)
         self.scene.addLine(-WIDTH/2, -HEIGHT/2, -WIDTH/2, HEIGHT/2, self.blackPen)
@@ -292,11 +301,12 @@ class Ui_Form(QtWidgets.QWidget):
             value.frame.setRotation(value.angle)
             value.publish()
             # drawing laser_scan
+            self.pen.setColor(QtGui.QColor(*value.laser_color))
             if value.draw_laser:
                 for i in value.points:
                     if i['point2'] == {}:
                         continue
-                    line = self.scene.addPolygon(QtGui.QPolygonF([QtCore.QPointF(i['point1']['x'], i['point1']['y']), QtCore.QPointF(i['point2']['x'], i['point2']['y'])]), self.redPen)
+                    line = self.scene.addPolygon(QtGui.QPolygonF([QtCore.QPointF(i['point1']['x'], i['point1']['y']), QtCore.QPointF(i['point2']['x'], i['point2']['y'])]), self.pen)
                     self.laser_polygons.append(line)
 
             # get robot points for laser

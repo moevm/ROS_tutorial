@@ -3,8 +3,8 @@
 ### Create workspace directory
 ```
 mkdir ~/ros_tutorial
-cd ~/ros_tutorial
 mkdir ~/ros_tutorial/src
+cd ~/ros_tutorial/src
 catkin_init_workspace
 ```
 

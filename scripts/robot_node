@@ -173,8 +173,9 @@ class Ui_Form(QtWidgets.QWidget):
         r = rospkg.RosPack()
         self.sprite_path = f'{r.get_path("ros_tutorial")}/resource/robot.png'
                 
-        #TODO исправить view для отображения оси y снизу вверх
         self.view = QtWidgets.QGraphicsView(self.scene, self)
+        transform = QtGui.QTransform.fromScale(1.0, -1.0)
+        self.view.setTransform(transform)
         self.view.setFixedSize(self.width, self.height)
         self.view.setSceneRect(-self.width/2 + VIEW_W_OFFSET, -self.height/2 + VIEW_H_OFFSET, self.width - 2*VIEW_W_OFFSET, self.height - 2*VIEW_H_OFFSET)
         

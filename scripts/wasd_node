@@ -74,9 +74,9 @@ class Ui_Form(QtWidgets.QWidget):
         elif (event.key() == Qt.Key_S):
             msg.linear.x = -2.0
         elif (event.key() == Qt.Key_A):
-            msg.angular.z = -5
-        elif (event.key() == Qt.Key_D):
             msg.angular.z = 5
+        elif (event.key() == Qt.Key_D):
+            msg.angular.z = -5
         self.publusher.publish(msg)
 
     def retranslateUi(self, Form):

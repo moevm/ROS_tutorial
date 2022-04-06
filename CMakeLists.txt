@@ -64,6 +64,7 @@ add_service_files(
   Kill.srv
   SetPose.srv
   SetWall.srv
+  OnOffLaser.srv
 )
 
 ## Generate actions in the 'action' folder

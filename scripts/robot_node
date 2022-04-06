@@ -10,7 +10,7 @@ from geometry_msgs.msg import Twist, Pose
 from PyQt5 import QtCore, QtWidgets, QtGui
 # from python_qt_binding import QtCore, QtWidgets, QtGui
 from ros_tutorial.srv import Kill, KillResponse, SetPose, SetPoseResponse, \
-    Spawn, SpawnResponse, SetWall, SetWallResponse
+    Spawn, SpawnResponse, SetWall, SetWallResponse, OnOffLaser, OnOffLaserResponse
 from ros_tutorial.msg import ObjectsArray, ObjectOnScene
 
 #при спавне робота или стены, проверять, что нет пересечений с другими роботами
@@ -95,10 +95,16 @@ class Robot():
     def set_services(self, set_pose, kill):
         self.set_pose = set_pose
         self.kill = kill
+        self.on_off_laser = rospy.Service(f'{self.name}/on_off_laser', OnOffLaser, self.change_draw_state)
+
+    def change_draw_state(self, msg):
+        self.draw_laser = not self.draw_laser
+        return OnOffLaserResponse(self.draw_laser)
 
     def shutdown_service(self):
         self.set_pose.shutdown()
         self.kill.shutdown()
+        self.on_off_laser.shutdown()
         
     def move(self, data):                
         self.angle += data.angular.z

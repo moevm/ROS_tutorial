@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-import os
 import sys
-import time
 import signal
 import rospkg
 import rospy
@@ -171,7 +169,10 @@ class Ui_Form(QtWidgets.QWidget):
         self.scene.clearFocus()
         self.walls = []
         self.laser_polygons = []
-        
+
+        r = rospkg.RosPack()
+        self.sprite_path = f'{r.get_path("ros_tutorial")}/resource/robot.png'
+                
         #TODO исправить view для отображения оси y снизу вверх
         self.view = QtWidgets.QGraphicsView(self.scene, self)
         self.view.setFixedSize(self.width, self.height)
@@ -270,13 +271,10 @@ class Ui_Form(QtWidgets.QWidget):
                 newObject.points = [item.line().x1(), item.line().y1(), item.line().x2(), item.line().y2()]
                 msg.data.append(newObject)
         
-        
         for key, value in self.robots_dict.items():
             # drawing robot
             if value.frame is None:
-                #TODO заменить использование os на rospkg
-                path = os.curdir + '/src/ros_tutorial/resource/robot.png'
-                image = QtGui.QImage(path)
+                image = QtGui.QImage(self.sprite_path)
                 #TODO корректное масштабирование спрайта
                 # image = image.scaled(image.size()*2, aspectRatioMode=QtCore.Qt.KeepAspectRatioByExpanding, transformMode=QtCore.Qt.FastTransformation)
                 value.frame = QtWidgets.QGraphicsPixmapItem(QtGui.QPixmap.fromImage(image).transformed(QtGui.QTransform().rotate(90)))

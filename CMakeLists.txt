@@ -66,6 +66,7 @@ add_service_files(
   SetWall.srv
   OnOffLaser.srv
   SetLaserColor.srv
+  ChangeLaserMode.srv
 )
 
 ## Generate actions in the 'action' folder

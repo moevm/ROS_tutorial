@@ -9,9 +9,7 @@ from geometry_msgs.msg import Twist, Pose
 #Использовать pyqt5 вместо python_qt_biding для упрощения поиска методов
 from PyQt5 import QtCore, QtWidgets, QtGui
 # from python_qt_binding import QtCore, QtWidgets, QtGui
-from ros_tutorial.srv import Kill, KillResponse, SetPose, SetPoseResponse, \
-    Spawn, SpawnResponse, SetWall, SetWallResponse, OnOffLaser, OnOffLaserResponse, \
-    SetLaserColor, SetLaserColorResponse
+from ros_tutorial.srv import *
 from ros_tutorial.msg import ObjectsArray, ObjectOnScene
 
 #при спавне робота или стены, проверять, что нет пересечений с другими роботами
@@ -27,7 +25,6 @@ VIEW_W_OFFSET = 20
 
 class Scaner():
     # set distance to -1 so range is not limited
-    #TODO add service for change color, type of render scan(dots or lines)
     def __init__(self, distance = -1, start_angle=0, end_angle=360, angle_delta=1, parent_id='robot1') -> None:
         self.distance = distance
         self.start_angle=start_angle
@@ -92,28 +89,35 @@ class Robot():
         self.points = []
         self.draw_laser = laser_on
         self.laser_color = (255, 0, 0)
+        self.point_size = 4
+        self.lines_flag = True
 
 
-    #добавить сервис для on/off лазера, сервис изменения цвета лазера, сервис изменения линии на точку
     def set_services(self, set_pose, kill):
         self.set_pose = set_pose
         self.kill = kill
         self.on_off_laser = rospy.Service(f'{self.name}/on_off_laser', OnOffLaser, self.change_draw_state)
         self.set_laser_color = rospy.Service(f'{self.name}/set_laser_color', SetLaserColor, self.set_laser_color)
+        self.changing_laser_mode = rospy.Service(f'{self.name}/change_laser_mode', ChangeLaserMode, self.set_laser_mode)
 
     def change_draw_state(self, msg):
         self.draw_laser = not self.draw_laser
         return OnOffLaserResponse(self.draw_laser)
 
     def set_laser_color(self, msg):
-        print(msg)
         self.laser_color = (msg.r, msg.g, msg.b)
         return SetLaserColorResponse(*self.laser_color)
+
+    # True - draw lines, False - draw dots
+    def set_laser_mode(self, msg):
+        self.lines_flag = not self.lines_flag
+        return ChangeLaserModeResponse(self.lines_flag)
 
     def shutdown_service(self):
         self.set_pose.shutdown()
         self.kill.shutdown()
         self.on_off_laser.shutdown()
+        self.changing_laser_mode.shutdown()
         
     def move(self, data):                
         self.angle += data.angular.z
@@ -199,6 +203,7 @@ class Ui_Form(QtWidgets.QWidget):
         
         self.init_ros()
         self.pen = QtGui.QPen(QtGui.QColor(255, 0, 0))
+        self.brush = QtGui.QBrush(self.pen.color())
         self.blackPen = QtGui.QPen(QtGui.QColor(0, 0, 0))
         self.blackPen.setWidth(1)
         self.scene.addLine(-WIDTH/2, -HEIGHT/2, -WIDTH/2, HEIGHT/2, self.blackPen)
@@ -306,7 +311,11 @@ class Ui_Form(QtWidgets.QWidget):
                 for i in value.points:
                     if i['point2'] == {}:
                         continue
-                    line = self.scene.addPolygon(QtGui.QPolygonF([QtCore.QPointF(i['point1']['x'], i['point1']['y']), QtCore.QPointF(i['point2']['x'], i['point2']['y'])]), self.pen)
+                    line = None
+                    if value.lines_flag:
+                        line = self.scene.addPolygon(QtGui.QPolygonF([QtCore.QPointF(i['point1']['x'], i['point1']['y']), QtCore.QPointF(i['point2']['x'], i['point2']['y'])]), self.pen)
+                    else:
+                        line = self.scene.addEllipse(i['point2']['x'] - value.point_size/2, i['point2']['y']- value.point_size/2, value.point_size, value.point_size, self.pen, self.brush)
                     self.laser_polygons.append(line)
 
             # get robot points for laser

@@ -3,7 +3,6 @@ import sys
 import signal
 import rospkg
 import rospy
-import threading
 from math import pi, sin, cos, sqrt
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, Pose
@@ -36,18 +35,19 @@ class Scaner():
     def set_objects(self, objects):
         self.objects = objects
 
-    def get_distance_to_object(self, x, y, angle, robot_offset, curr):
+    def get_distance_to_object(self, x, y, angle, robot_offset):
         near = self.distance
         if near == -1:
             near = 1000
-        point1 = {'x': x + (robot_offset) * cos(angle * pi / 180), 'y': y + robot_offset * sin(angle * pi / 180)}
+        point1 = {'x': x + robot_offset * cos(angle * pi / 180), 'y': y + robot_offset * sin(angle * pi / 180)}
         vector = {'x1': point1['x'], 'y1': point1['y'], 'x2': x + (near) * cos(angle * pi / 180), 'y2': y + near * sin(angle * pi / 180)}
         closest_point = {}
         for i in self.objects:
-            #TODO поправить отображение лазера на спрайте робота
             if i.type == 'robot' and i.name == self.parent_id:
                 continue
-            for j in range((len(i.points) - 3)):
+            for j in range(0, len(i.points), 2):
+                if len(i.points) == 4 and j == 2:
+                    break
                 def findIntersection(x1,y1,x2,y2,x3,y3,x4,y4):
                     try:
                         ua = ((x4 - x3)*(y1 - y3) - (y4 - y3)*(x1 - x3))/((y4 - y3)*(x2 - x1) - (x4 - x3)*(y2 - y1))
@@ -57,8 +57,7 @@ class Scaner():
                         return None
                     except ZeroDivisionError:
                         return None
-
-                point = findIntersection(i.points[j],i.points[j+1], i.points[j+2],i.points[j+3],
+                point = findIntersection(i.points[j],i.points[(j+1)], i.points[(j+2) % 8],i.points[(j+3) % 8],
                                          vector['x1'], vector['y1'], vector['x2'], vector['y2'])
                 if point:
                     new_dist = sqrt((point['x'] - x) ** 2 + (point['y'] - y) ** 2)
@@ -71,7 +70,7 @@ class Scaner():
     def get_laser_points(self, x, y, robot_offset, direction):
         self.points = []
         for current_angle in range(self.start_angle, self.end_angle, self.angle_delta):
-            point = self.get_distance_to_object(x, y, direction + current_angle, robot_offset, current_angle)
+            point = self.get_distance_to_object(x, y, direction + current_angle, robot_offset)
             self.points.append(point)
         return self.points
 
@@ -128,14 +127,14 @@ class Robot():
             self.angle += 360
 
         dx = data.linear.x * cos(self.angle * pi / 180)
-        dy = data.linear.x * sin(self.angle * pi / 180)        
+        dy = data.linear.x * sin(self.angle * pi / 180)
         #TODO физика объектов
 
-        if abs(self.x + dx) < WIDTH / 2 - self.frame.pixmap().width():
+        if abs(self.x + dx) < WIDTH / 2 - self.frame.pixmap().width()/2:
             self.x += dx
         else:
             rospy.logwarn('i hit the wall!')
-        if abs(self.y + dy) < HEIGHT / 2 - self.frame.pixmap().height():    
+        if abs(self.y + dy) < HEIGHT / 2 - self.frame.pixmap().height()/2:    
             self.y += dy
         else:
             rospy.logwarn('i hit the wall!')
@@ -169,7 +168,7 @@ class Robot():
 
     def whats_around_me(self, msg):
         self.scan.set_objects(msg.data)
-        self.points = self.scan.get_laser_points(self.x, self.y, robot_offset=self.frame.boundingRect().height(), direction=self.angle)
+        self.points = self.scan.get_laser_points(self.x, self.y, robot_offset=self.frame.boundingRect().height()*0.7, direction=self.angle)
             
 
 class Ui_Form(QtWidgets.QWidget):
@@ -192,7 +191,7 @@ class Ui_Form(QtWidgets.QWidget):
         self.laser_polygons = []
 
         r = rospkg.RosPack()
-        self.sprite_path = f'{r.get_path("ros_tutorial")}/resource/robot.png'
+        self.sprite_path = f'{r.get_path("ros_tutorial")}/resource/robot1.png'
                 
         self.view = QtWidgets.QGraphicsView(self.scene, self)
         transform = QtGui.QTransform.fromScale(1.0, -1.0)
@@ -201,7 +200,8 @@ class Ui_Form(QtWidgets.QWidget):
         self.view.setSceneRect(-self.width/2 + VIEW_W_OFFSET, -self.height/2 + VIEW_H_OFFSET, self.width - 2*VIEW_W_OFFSET, self.height - 2*VIEW_H_OFFSET)
         
         self.robots_dict.update({'robot1': Robot(x=0, y=0, laser_on=True)})
-        # self.robots_dict.update({'robot2': Robot(name='robot2', x=50, y=50, angle=pi/4)})
+        self.robots_dict.update({'robot2': Robot(name='robot2', x=100, y=50, angle=pi/4)})
+        
         
         self.init_ros()
         self.pen = QtGui.QPen(QtGui.QColor(255, 0, 0))
@@ -232,7 +232,7 @@ class Ui_Form(QtWidgets.QWidget):
         self.objects_publisher = rospy.Publisher(f'/{self.node_name}/objects', ObjectsArray, queue_size=10)
         #TODO think - добавление новых роботов через rosparam
         self.init_service('robot1')
-        # self.init_service('robot2')
+        self.init_service('robot2')
 
     # TODO подумать над переносом инициализации сервисов для робота в класс робота
     def init_service(self, name):
@@ -301,10 +301,9 @@ class Ui_Form(QtWidgets.QWidget):
             # drawing robot
             if value.frame is None:
                 image = QtGui.QImage(self.sprite_path)
-                #TODO корректное масштабирование спрайта
-                # image = image.scaled(image.size()*2, aspectRatioMode=QtCore.Qt.KeepAspectRatioByExpanding, transformMode=QtCore.Qt.FastTransformation)
+                scale_param = 2
+                image = image.scaled(image.width()*scale_param, image.height()*scale_param, aspectRatioMode=QtCore.Qt.KeepAspectRatioByExpanding)
                 value.frame = QtWidgets.QGraphicsPixmapItem(QtGui.QPixmap.fromImage(image).transformed(QtGui.QTransform().rotate(90)))
-                value.frame.setScale(2)
                 self.scene.addItem(value.frame)
             value.frame.setOffset(value.x - value.frame.pixmap().width()/2, value.y - value.frame.pixmap().height()/2)
             value.frame.setTransformOriginPoint(value.x, value.y)
@@ -330,11 +329,9 @@ class Ui_Form(QtWidgets.QWidget):
             rect = value.frame.boundingRect()
             newObject.points = [rect.topLeft().x() , rect.topLeft().y(),
                                 rect.topRight().x(), rect.topRight().y(),
-                                rect.bottomLeft().x(), rect.bottomLeft().y(),
                                 rect.bottomRight().x(), rect.bottomRight().y(),
+                                rect.bottomLeft().x(), rect.bottomLeft().y(),
             ]
-            #TODO проверить границы объекта, чтобы норамльно отрисовывалось
-            # newObject.points = list(map(lambda x: x * 0.8, newObject.points))
             msg.data.append(newObject)
         self.objects_publisher.publish(msg)
             

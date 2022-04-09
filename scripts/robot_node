@@ -191,7 +191,7 @@ class Ui_Form(QtWidgets.QWidget):
         self.laser_polygons = []
 
         r = rospkg.RosPack()
-        self.sprite_path = f'{r.get_path("ros_tutorial")}/resource/robot1.png'
+        self.sprite_path = f'{r.get_path("ros_tutorial")}/resource/robot.png'
                 
         self.view = QtWidgets.QGraphicsView(self.scene, self)
         transform = QtGui.QTransform.fromScale(1.0, -1.0)

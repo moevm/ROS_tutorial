@@ -3,6 +3,7 @@ import sys
 import signal
 import rospkg
 import rospy
+import threading
 from math import pi, sin, cos, sqrt
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, Pose
@@ -186,6 +187,7 @@ class Ui_Form(QtWidgets.QWidget):
         self.robots_dict = {}
         self.scene = QtWidgets.QGraphicsScene()
         self.scene.clearFocus()
+        self.new_wall_coordinates = None
         self.walls = []
         self.laser_polygons = []
 
@@ -206,15 +208,17 @@ class Ui_Form(QtWidgets.QWidget):
         self.brush = QtGui.QBrush(self.pen.color())
         self.blackPen = QtGui.QPen(QtGui.QColor(0, 0, 0))
         self.blackPen.setWidth(1)
-        self.scene.addLine(-WIDTH/2, -HEIGHT/2, -WIDTH/2, HEIGHT/2, self.blackPen)
-        self.scene.addLine(-WIDTH/2, HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen)
-        self.scene.addLine(WIDTH/2, -HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen)
-        self.scene.addLine(-WIDTH/2, -HEIGHT/2, WIDTH/2, -HEIGHT/2, self.blackPen)
+
+        self.walls.append(self.scene.addLine(-WIDTH/2, -HEIGHT/2, -WIDTH/2, HEIGHT/2, self.blackPen))
+        self.walls.append(self.scene.addLine(-WIDTH/2, HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen))
+        self.walls.append(self.scene.addLine(WIDTH/2, -HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen))
+        self.walls.append(self.scene.addLine(-WIDTH/2, -HEIGHT/2, WIDTH/2, -HEIGHT/2, self.blackPen))
+        
 
         #переделать добавление объектов через rosparam
-        self.scene.addLine(-100, -100, 200, -100, self.blackPen)
-        self.scene.addLine(-100, 150, 200, 100, self.blackPen)
-        self.scene.addLine(-150, 50, -25, -50, self.blackPen)
+        self.walls.append(self.scene.addLine(-100, -100, 200, -100, self.blackPen))
+        self.walls.append(self.scene.addLine(-100, 150, 200, 100, self.blackPen))
+        self.walls.append(self.scene.addLine(-150, 50, -25, -50, self.blackPen))
 
 
     def do_close(self):
@@ -238,10 +242,7 @@ class Ui_Form(QtWidgets.QWidget):
         )
 
     def set_wall(self, req):
-        # TODO need to debug. fix timer error - добавление нового элемента, и для отрисовки лазера на новых объектах
-        new_wall = self.scene.addLine(req.x1, req.y1, req.x2, req.y2, self.blackPen)
-        self.walls.append(new_wall)
-        self.onUpdate()
+        self.new_wall_coordinates = [req.x1, req.y1, req.x2, req.y2]
         return SetWallResponse(f'{req.x1} {req.y1} {req.x2} {req.y2}')
 
     def get_teleport_func(self, name):
@@ -280,17 +281,21 @@ class Ui_Form(QtWidgets.QWidget):
         return kill
 
     def onUpdate(self):
+        if self.new_wall_coordinates:
+            new_wall = self.scene.addLine(*self.new_wall_coordinates, self.blackPen)
+            self.walls.append(new_wall)
+            self.new_wall_coordinates = None
+        
         for i in self.laser_polygons:
             self.scene.removeItem(i)
         self.laser_polygons.clear()
         msg = ObjectsArray()
         # get walls point for laser
-        for item in self.scene.items():
+        for item in self.walls:
             newObject = ObjectOnScene()
-            if item.type() == 6:
-                newObject.type = 'wall'
-                newObject.points = [item.line().x1(), item.line().y1(), item.line().x2(), item.line().y2()]
-                msg.data.append(newObject)
+            newObject.type = 'wall'
+            newObject.points = [item.line().x1(), item.line().y1(), item.line().x2(), item.line().y2()]
+            msg.data.append(newObject)
         
         for key, value in self.robots_dict.items():
             # drawing robot

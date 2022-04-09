@@ -92,13 +92,12 @@ class Robot():
         self.point_size = 4
         self.lines_flag = True
 
-
     def set_services(self, set_pose, kill):
-        self.set_pose = set_pose
-        self.kill = kill
-        self.on_off_laser = rospy.Service(f'{self.name}/on_off_laser', OnOffLaser, self.change_draw_state)
-        self.set_laser_color = rospy.Service(f'{self.name}/set_laser_color', SetLaserColor, self.set_laser_color)
-        self.changing_laser_mode = rospy.Service(f'{self.name}/change_laser_mode', ChangeLaserMode, self.set_laser_mode)
+        self.set_pose_service = set_pose
+        self.kill_service = kill
+        self.on_off_laser_service = rospy.Service(f'{self.name}/on_off_laser', OnOffLaser, self.change_draw_state)
+        self.set_laser_color_service = rospy.Service(f'{self.name}/set_laser_color', SetLaserColor, self.set_laser_color)
+        self.changing_laser_mode_service = rospy.Service(f'{self.name}/change_laser_mode', ChangeLaserMode, self.set_laser_mode)
 
     def change_draw_state(self, msg):
         self.draw_laser = not self.draw_laser
@@ -114,10 +113,11 @@ class Robot():
         return ChangeLaserModeResponse(self.lines_flag)
 
     def shutdown_service(self):
-        self.set_pose.shutdown()
-        self.kill.shutdown()
-        self.on_off_laser.shutdown()
-        self.changing_laser_mode.shutdown()
+        self.set_pose_service.shutdown()
+        self.kill_service.shutdown()
+        self.on_off_laser_service.shutdown()
+        self.changing_laser_mode_service.shutdown()
+        self.set_laser_color_service.shutdown()
         
     def move(self, data):                
         self.angle += data.angular.z
@@ -144,19 +144,21 @@ class Robot():
         self.cmd_vel = rospy.Subscriber(f'{self.name}/cmd_vel', Twist, callback=self.move)
         self.pose = rospy.Publisher(f'{self.name}/pose', Pose, queue_size=10)
         self.laser_scan_publisher = rospy.Publisher(f'{self.name}/laser_scan', LaserScan, queue_size=10)
-        # TODO убрать баг с get_name, который возвращает unnamed
-        # self.object_subscriber = rospy.Subscriber(f'{rospy.get_name()}/objects', ObjectsArray, callback=self.whats_around_me)
-        self.object_subscriber = rospy.Subscriber(f'robot_node/objects', ObjectsArray, callback=self.whats_around_me)
+        self.object_subscriber = rospy.Subscriber(f'{rospy.get_name()}/objects', ObjectsArray, callback=self.whats_around_me)
 
     def publish(self):
-        pose_msg = Pose()
-        pose_msg.position.x = self.x
-        pose_msg.position.y = self.y
-        pose_msg.orientation.z = self.angle
-        self.pose.publish(pose_msg)
+        # required becaude changes in the robots_dict do not hate time to be displayed
+        try:
+            pose_msg = Pose()
+            pose_msg.position.x = self.x
+            pose_msg.position.y = self.y
+            pose_msg.orientation.z = self.angle
+            self.pose.publish(pose_msg)
 
-        scan_msg = self.fill_scan_msg(LaserScan())
-        self.laser_scan_publisher.publish(scan_msg)
+            scan_msg = self.fill_scan_msg(LaserScan())
+            self.laser_scan_publisher.publish(scan_msg)
+        except rospy.ROSException:
+            pass
 
     def fill_scan_msg(self, msg):
         # TODO fill msg
@@ -165,6 +167,8 @@ class Robot():
     def shutdown_topics(self):
         self.cmd_vel.unregister()
         self.pose.unregister()
+        self.laser_scan_publisher.unregister()
+        self.object_subscriber.unregister()
 
     def whats_around_me(self, msg):
         self.scan.set_objects(msg.data)
@@ -199,27 +203,26 @@ class Ui_Form(QtWidgets.QWidget):
         self.view.setFixedSize(self.width, self.height)
         self.view.setSceneRect(-self.width/2 + VIEW_W_OFFSET, -self.height/2 + VIEW_H_OFFSET, self.width - 2*VIEW_W_OFFSET, self.height - 2*VIEW_H_OFFSET)
         
-        self.robots_dict.update({'robot1': Robot(x=0, y=0, laser_on=True)})
-        self.robots_dict.update({'robot2': Robot(name='robot2', x=100, y=50, angle=pi/4)})
-        
-        
         self.init_ros()
         self.pen = QtGui.QPen(QtGui.QColor(255, 0, 0))
         self.brush = QtGui.QBrush(self.pen.color())
         self.blackPen = QtGui.QPen(QtGui.QColor(0, 0, 0))
         self.blackPen.setWidth(1)
 
+        self.robots_dict.update({'robot1': Robot(x=0, y=0, laser_on=True)})
+        self.robots_dict.update({'robot2': Robot(name='robot2', x=100, y=50, angle=pi/4)})
+        self.init_service('robot1')
+        self.init_service('robot2')
+
         self.walls.append(self.scene.addLine(-WIDTH/2, -HEIGHT/2, -WIDTH/2, HEIGHT/2, self.blackPen))
         self.walls.append(self.scene.addLine(-WIDTH/2, HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen))
         self.walls.append(self.scene.addLine(WIDTH/2, -HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen))
         self.walls.append(self.scene.addLine(-WIDTH/2, -HEIGHT/2, WIDTH/2, -HEIGHT/2, self.blackPen))
         
-
         #переделать добавление объектов через rosparam
         self.walls.append(self.scene.addLine(-100, -100, 200, -100, self.blackPen))
         self.walls.append(self.scene.addLine(-100, 150, 200, 100, self.blackPen))
         self.walls.append(self.scene.addLine(-150, 50, -25, -50, self.blackPen))
-
 
     def do_close(self):
         self.close()
@@ -231,10 +234,7 @@ class Ui_Form(QtWidgets.QWidget):
         rospy.Service(f'/{self.node_name}/set_wall', SetWall, self.set_wall)
         self.objects_publisher = rospy.Publisher(f'/{self.node_name}/objects', ObjectsArray, queue_size=10)
         #TODO think - добавление новых роботов через rosparam
-        self.init_service('robot1')
-        self.init_service('robot2')
 
-    # TODO подумать над переносом инициализации сервисов для робота в класс робота
     def init_service(self, name):
         self.robots_dict[name].set_services(
             set_pose=rospy.Service(f'/{name}/set_pose', SetPose, self.get_teleport_func(name)),

@@ -3,17 +3,17 @@ import sys
 import signal
 import rospkg
 import rospy
-from math import pi, sin, cos, sqrt
+from math import pi, sin, cos, sqrt, inf
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, Pose
-#Использовать pyqt5 вместо python_qt_biding для упрощения поиска методов
+# Использовать pyqt5 вместо python_qt_biding для упрощения поиска методов
 from PyQt5 import QtCore, QtWidgets, QtGui
 # from python_qt_binding import QtCore, QtWidgets, QtGui
 from ros_tutorial.srv import *
 from ros_tutorial.msg import ObjectsArray, ObjectOnScene
 
-#при спавне робота или стены, проверять, что нет пересечений с другими роботами
-#добавить линии, отображающие координаты
+# при спавне робота или стены, проверять, что нет пересечений с другими роботами
+# добавить линии, отображающие координаты
 
 HEIGHT = 500
 WIDTH = 500
@@ -24,23 +24,28 @@ VIEW_W_OFFSET = 20
 
 
 class Scaner():
-    # set distance to -1 so range is not limited
-    def __init__(self, distance = -1, start_angle=0, end_angle=360, angle_delta=1, parent_id='robot1') -> None:
-        self.distance = distance
-        self.start_angle=start_angle
-        self.end_angle=end_angle
+    # set max_range to -1 so range is not limited
+    def __init__(self, max_range=-1, start_angle=0, end_angle=360, angle_delta=1, parent_id='robot1') -> None:
+        self.min_range = None
+        self.max_range = max_range
+        self.start_angle = start_angle
+        self.end_angle = end_angle
         self.angle_delta = angle_delta
         self.parent_id = parent_id
 
     def set_objects(self, objects):
         self.objects = objects
 
-    def get_distance_to_object(self, x, y, angle, robot_offset):
-        near = self.distance
+    def set_min_range(self, min_range):
+        self.min_range = min_range
+
+    def get_ranges_to_object(self, x, y, angle):
+        near = self.max_range
         if near == -1:
             near = 1000
-        point1 = {'x': x + robot_offset * cos(angle * pi / 180), 'y': y + robot_offset * sin(angle * pi / 180)}
-        vector = {'x1': point1['x'], 'y1': point1['y'], 'x2': x + (near) * cos(angle * pi / 180), 'y2': y + near * sin(angle * pi / 180)}
+        point1 = {'x': x + self.min_range * cos(angle * pi / 180), 'y': y + self.min_range * sin(angle * pi / 180)}
+        vector = {'x1': point1['x'], 'y1': point1['y'], 'x2': x + (near) * cos(angle * pi / 180),
+                  'y2': y + near * sin(angle * pi / 180)}
         closest_point = {}
         for i in self.objects:
             if i.type == 'robot' and i.name == self.parent_id:
@@ -48,16 +53,20 @@ class Scaner():
             for j in range(0, len(i.points), 2):
                 if len(i.points) == 4 and j == 2:
                     break
-                def findIntersection(x1,y1,x2,y2,x3,y3,x4,y4):
+
+                def findIntersection(x1, y1, x2, y2, x3, y3, x4, y4):
                     try:
-                        ua = ((x4 - x3)*(y1 - y3) - (y4 - y3)*(x1 - x3))/((y4 - y3)*(x2 - x1) - (x4 - x3)*(y2 - y1))
-                        ub = ((x2 - x1)*(y1 - y3) - (y2 - y1)*(x1 - x3))/((y4 - y3)*(x2 - x1) - (x4 - x3)*(y2 - y1))
+                        ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / (
+                                    (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1))
+                        ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / (
+                                    (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1))
                         if 0 <= ua <= 1 and 0 <= ub <= 1:
                             return {'x': x1 + ua * (x2 - x1), 'y': y1 + ua * (y2 - y1)}
                         return None
                     except ZeroDivisionError:
                         return None
-                point = findIntersection(i.points[j],i.points[(j+1)], i.points[(j+2) % 8],i.points[(j+3) % 8],
+
+                point = findIntersection(i.points[j], i.points[(j + 1)], i.points[(j + 2) % 8], i.points[(j + 3) % 8],
                                          vector['x1'], vector['y1'], vector['x2'], vector['y2'])
                 if point:
                     new_dist = sqrt((point['x'] - x) ** 2 + (point['y'] - y) ** 2)
@@ -65,16 +74,16 @@ class Scaner():
                         closest_point['x'] = point['x']
                         closest_point['y'] = point['y']
                         near = new_dist
+        if closest_point == {}:
+            closest_point = {'x': inf, 'y': inf}
         return {'point1': point1, 'point2': closest_point}
 
-    def get_laser_points(self, x, y, robot_offset, direction):
+    def get_laser_points(self, x, y, direction):
         self.points = []
         for current_angle in range(self.start_angle, self.end_angle, self.angle_delta):
-            point = self.get_distance_to_object(x, y, direction + current_angle, robot_offset)
+            point = self.get_ranges_to_object(x, y, direction + current_angle)
             self.points.append(point)
         return self.points
-
-        
 
 
 class Robot():
@@ -96,8 +105,10 @@ class Robot():
         self.set_pose_service = set_pose
         self.kill_service = kill
         self.on_off_laser_service = rospy.Service(f'{self.name}/on_off_laser', OnOffLaser, self.change_draw_state)
-        self.set_laser_color_service = rospy.Service(f'{self.name}/set_laser_color', SetLaserColor, self.set_laser_color)
-        self.changing_laser_mode_service = rospy.Service(f'{self.name}/change_laser_mode', ChangeLaserMode, self.set_laser_mode)
+        self.set_laser_color_service = rospy.Service(f'{self.name}/set_laser_color', SetLaserColor,
+                                                     self.set_laser_color)
+        self.changing_laser_mode_service = rospy.Service(f'{self.name}/change_laser_mode', ChangeLaserMode,
+                                                         self.set_laser_mode)
 
     def change_draw_state(self, msg):
         self.draw_laser = not self.draw_laser
@@ -118,50 +129,60 @@ class Robot():
         self.on_off_laser_service.shutdown()
         self.changing_laser_mode_service.shutdown()
         self.set_laser_color_service.shutdown()
-        
-    def move(self, data):                
+
+    def move(self, data):
         self.angle += data.angular.z
         if self.angle >= 360:
             self.angle -= 360
-        elif  self.angle < 0:
+        elif self.angle < 0:
             self.angle += 360
 
         dx = data.linear.x * cos(self.angle * pi / 180)
         dy = data.linear.x * sin(self.angle * pi / 180)
-        #TODO физика объектов
+        # TODO физика объектов
 
-        if abs(self.x + dx) < WIDTH / 2 - self.frame.pixmap().width()/2:
+        if abs(self.x + dx) < WIDTH / 2 - self.frame.pixmap().width() / 2:
             self.x += dx
         else:
             rospy.logwarn('i hit the wall!')
-        if abs(self.y + dy) < HEIGHT / 2 - self.frame.pixmap().height()/2:    
+        if abs(self.y + dy) < HEIGHT / 2 - self.frame.pixmap().height() / 2:
             self.y += dy
         else:
             rospy.logwarn('i hit the wall!')
-        
 
     def init_topics(self):
         self.cmd_vel = rospy.Subscriber(f'{self.name}/cmd_vel', Twist, callback=self.move)
         self.pose = rospy.Publisher(f'{self.name}/pose', Pose, queue_size=10)
         self.laser_scan_publisher = rospy.Publisher(f'{self.name}/laser_scan', LaserScan, queue_size=10)
-        self.object_subscriber = rospy.Subscriber(f'{rospy.get_name()}/objects', ObjectsArray, callback=self.whats_around_me)
+        self.object_subscriber = rospy.Subscriber(f'{rospy.get_name()}/objects', ObjectsArray,
+                                                  callback=self.whats_around_me)
 
     def publish(self):
-        # required becaude changes in the robots_dict do not hate time to be displayed
+        # required because changes in the robots_dict do not hate time to be displayed
         try:
             pose_msg = Pose()
             pose_msg.position.x = self.x
             pose_msg.position.y = self.y
             pose_msg.orientation.z = self.angle
             self.pose.publish(pose_msg)
-
-            scan_msg = self.fill_scan_msg(LaserScan())
-            self.laser_scan_publisher.publish(scan_msg)
+            if self.frame:
+                self.scan.set_min_range(self.frame.boundingRect().height() * 0.7)
+                scan_msg = self.fill_scan_msg(LaserScan())
+                self.laser_scan_publisher.publish(scan_msg)
         except rospy.ROSException:
             pass
 
     def fill_scan_msg(self, msg):
-        # TODO fill msg
+        msg.angle_min = self.scan.start_angle * pi / 180
+        msg.angle_max = self.scan.end_angle * pi / 180
+        msg.angle_increment = self.scan.angle_delta * pi / 180
+        msg.range_min = self.scan.min_range
+        msg.range_max = self.scan.max_range if self.scan.max_range != -1 else inf
+        for i in self.points:
+            point1 = i['point1']
+            point2 = i['point2']
+            range = sqrt((point1['x'] - point2['x']) ** 2 + (point1['y'] - point2['y']) ** 2)
+            msg.ranges.append(range)
         return msg
 
     def shutdown_topics(self):
@@ -172,8 +193,8 @@ class Robot():
 
     def whats_around_me(self, msg):
         self.scan.set_objects(msg.data)
-        self.points = self.scan.get_laser_points(self.x, self.y, robot_offset=self.frame.boundingRect().height()*0.7, direction=self.angle)
-            
+        self.points = self.scan.get_laser_points(self.x, self.y, direction=self.angle)
+
 
 class Ui_Form(QtWidgets.QWidget):
     def __init__(self):
@@ -196,13 +217,14 @@ class Ui_Form(QtWidgets.QWidget):
 
         r = rospkg.RosPack()
         self.sprite_path = f'{r.get_path("ros_tutorial")}/resource/robot.png'
-                
+
         self.view = QtWidgets.QGraphicsView(self.scene, self)
         transform = QtGui.QTransform.fromScale(1.0, -1.0)
         self.view.setTransform(transform)
         self.view.setFixedSize(self.width, self.height)
-        self.view.setSceneRect(-self.width/2 + VIEW_W_OFFSET, -self.height/2 + VIEW_H_OFFSET, self.width - 2*VIEW_W_OFFSET, self.height - 2*VIEW_H_OFFSET)
-        
+        self.view.setSceneRect(-self.width / 2 + VIEW_W_OFFSET, -self.height / 2 + VIEW_H_OFFSET,
+                               self.width - 2 * VIEW_W_OFFSET, self.height - 2 * VIEW_H_OFFSET)
+
         self.init_ros()
         self.pen = QtGui.QPen(QtGui.QColor(255, 0, 0))
         self.brush = QtGui.QBrush(self.pen.color())
@@ -210,16 +232,16 @@ class Ui_Form(QtWidgets.QWidget):
         self.blackPen.setWidth(1)
 
         self.robots_dict.update({'robot1': Robot(x=0, y=0, laser_on=True)})
-        self.robots_dict.update({'robot2': Robot(name='robot2', x=100, y=50, angle=pi/4)})
+        self.robots_dict.update({'robot2': Robot(name='robot2', x=100, y=50, angle=pi / 4)})
         self.init_service('robot1')
         self.init_service('robot2')
 
-        self.walls.append(self.scene.addLine(-WIDTH/2, -HEIGHT/2, -WIDTH/2, HEIGHT/2, self.blackPen))
-        self.walls.append(self.scene.addLine(-WIDTH/2, HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen))
-        self.walls.append(self.scene.addLine(WIDTH/2, -HEIGHT/2, WIDTH/2, HEIGHT/2, self.blackPen))
-        self.walls.append(self.scene.addLine(-WIDTH/2, -HEIGHT/2, WIDTH/2, -HEIGHT/2, self.blackPen))
-        
-        #переделать добавление объектов через rosparam
+        self.walls.append(self.scene.addLine(-WIDTH / 2, -HEIGHT / 2, -WIDTH / 2, HEIGHT / 2, self.blackPen))
+        self.walls.append(self.scene.addLine(-WIDTH / 2, HEIGHT / 2, WIDTH / 2, HEIGHT / 2, self.blackPen))
+        self.walls.append(self.scene.addLine(WIDTH / 2, -HEIGHT / 2, WIDTH / 2, HEIGHT / 2, self.blackPen))
+        self.walls.append(self.scene.addLine(-WIDTH / 2, -HEIGHT / 2, WIDTH / 2, -HEIGHT / 2, self.blackPen))
+
+        # переделать добавление объектов через rosparam
         self.walls.append(self.scene.addLine(-100, -100, 200, -100, self.blackPen))
         self.walls.append(self.scene.addLine(-100, 150, 200, 100, self.blackPen))
         self.walls.append(self.scene.addLine(-150, 50, -25, -50, self.blackPen))
@@ -233,12 +255,12 @@ class Ui_Form(QtWidgets.QWidget):
         rospy.Service(f'/{self.node_name}/spawn', Spawn, self.spawn)
         rospy.Service(f'/{self.node_name}/set_wall', SetWall, self.set_wall)
         self.objects_publisher = rospy.Publisher(f'/{self.node_name}/objects', ObjectsArray, queue_size=10)
-        #TODO think - добавление новых роботов через rosparam
+        # TODO think - добавление новых роботов через rosparam
 
     def init_service(self, name):
         self.robots_dict[name].set_services(
             set_pose=rospy.Service(f'/{name}/set_pose', SetPose, self.get_teleport_func(name)),
-            kill = rospy.Service(f'/{name}/kill', Kill, self.get_kill(name))
+            kill=rospy.Service(f'/{name}/kill', Kill, self.get_kill(name))
         )
 
     def set_wall(self, req):
@@ -253,6 +275,7 @@ class Ui_Form(QtWidgets.QWidget):
                 return SetPoseResponse(f'x: {req.pose.linear.x}, y: {req.pose.linear.y}, angle: {req.pose.angular.z}')
             else:
                 return SetPoseResponse('Out of border!')
+
         return set_pose
 
     def spawn(self, req):
@@ -270,7 +293,7 @@ class Ui_Form(QtWidgets.QWidget):
         if abs(pose.linear.x) < self.width / 2 and abs(pose.linear.y) < self.height / 2:
             return True
         return False
-    
+
     def get_kill(self, name):
         def kill(req):
             self.scene.removeItem(self.robots_dict[name].frame)
@@ -278,6 +301,7 @@ class Ui_Form(QtWidgets.QWidget):
             self.robots_dict[name].shutdown_topics()
             self.robots_dict.pop(name)
             return KillResponse(name)
+
         return kill
 
     def onUpdate(self):
@@ -285,7 +309,7 @@ class Ui_Form(QtWidgets.QWidget):
             new_wall = self.scene.addLine(*self.new_wall_coordinates, self.blackPen)
             self.walls.append(new_wall)
             self.new_wall_coordinates = None
-        
+
         for i in self.laser_polygons:
             self.scene.removeItem(i)
         self.laser_polygons.clear()
@@ -296,16 +320,19 @@ class Ui_Form(QtWidgets.QWidget):
             newObject.type = 'wall'
             newObject.points = [item.line().x1(), item.line().y1(), item.line().x2(), item.line().y2()]
             msg.data.append(newObject)
-        
+
         for key, value in self.robots_dict.items():
             # drawing robot
             if value.frame is None:
                 image = QtGui.QImage(self.sprite_path)
                 scale_param = 2
-                image = image.scaled(image.width()*scale_param, image.height()*scale_param, aspectRatioMode=QtCore.Qt.KeepAspectRatioByExpanding)
-                value.frame = QtWidgets.QGraphicsPixmapItem(QtGui.QPixmap.fromImage(image).transformed(QtGui.QTransform().rotate(90)))
+                image = image.scaled(image.width() * scale_param, image.height() * scale_param,
+                                     aspectRatioMode=QtCore.Qt.KeepAspectRatioByExpanding)
+                value.frame = QtWidgets.QGraphicsPixmapItem(
+                    QtGui.QPixmap.fromImage(image).transformed(QtGui.QTransform().rotate(90)))
                 self.scene.addItem(value.frame)
-            value.frame.setOffset(value.x - value.frame.pixmap().width()/2, value.y - value.frame.pixmap().height()/2)
+            value.frame.setOffset(value.x - value.frame.pixmap().width() / 2,
+                                  value.y - value.frame.pixmap().height() / 2)
             value.frame.setTransformOriginPoint(value.x, value.y)
             value.frame.setRotation(value.angle)
             value.publish()
@@ -313,13 +340,17 @@ class Ui_Form(QtWidgets.QWidget):
             self.pen.setColor(QtGui.QColor(*value.laser_color))
             if value.draw_laser:
                 for i in value.points:
-                    if i['point2'] == {}:
+                    if i['point2']['x'] == inf or i['point2']['y'] == inf:
                         continue
                     line = None
                     if value.lines_flag:
-                        line = self.scene.addPolygon(QtGui.QPolygonF([QtCore.QPointF(i['point1']['x'], i['point1']['y']), QtCore.QPointF(i['point2']['x'], i['point2']['y'])]), self.pen)
+                        line = self.scene.addPolygon(QtGui.QPolygonF(
+                            [QtCore.QPointF(i['point1']['x'], i['point1']['y']),
+                             QtCore.QPointF(i['point2']['x'], i['point2']['y'])]), self.pen)
                     else:
-                        line = self.scene.addEllipse(i['point2']['x'] - value.point_size/2, i['point2']['y']- value.point_size/2, value.point_size, value.point_size, self.pen, self.brush)
+                        line = self.scene.addEllipse(i['point2']['x'] - value.point_size / 2,
+                                                     i['point2']['y'] - value.point_size / 2, value.point_size,
+                                                     value.point_size, self.pen, self.brush)
                     self.laser_polygons.append(line)
 
             # get robot points for laser
@@ -327,14 +358,13 @@ class Ui_Form(QtWidgets.QWidget):
             newObject.type = 'robot'
             newObject.name = value.name
             rect = value.frame.boundingRect()
-            newObject.points = [rect.topLeft().x() , rect.topLeft().y(),
+            newObject.points = [rect.topLeft().x(), rect.topLeft().y(),
                                 rect.topRight().x(), rect.topRight().y(),
                                 rect.bottomRight().x(), rect.bottomRight().y(),
                                 rect.bottomLeft().x(), rect.bottomLeft().y(),
-            ]
+                                ]
             msg.data.append(newObject)
         self.objects_publisher.publish(msg)
-            
 
     def setupUi(self, Form):
         Form.setObjectName("Form")
@@ -349,6 +379,7 @@ class Ui_Form(QtWidgets.QWidget):
 
 def handler(*args):
     QtWidgets.QApplication.quit()
+
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)

@@ -1,0 +1,18 @@
+<launch>
+    <node pkg="ros_tutorial" name="one_robot_node" type="robot_node"/>
+    <node pkg="ros_tutorial" name="controller" type="wasd_node"/>
+    <node pkg="rosservice" type="rosservice" name="rosservice" args="call --wait /robot2/kill"/>
+    <rosparam param="walls">
+        [-150, -180, 250, -180,
+         -150, -180, -150, -80,
+         -150, -80, 100, -80,
+         100, -80, 100, 80,
+         100, 80, -50, 80,
+         -100, -80, -100, 0,
+         -100, 0, -150, 0,
+         -150, 0, -150, 150,
+         -150, 150, 180, 150,
+         180, 150, 180, -100
+         ]
+    </rosparam>
+</launch>

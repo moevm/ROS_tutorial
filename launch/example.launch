@@ -1,0 +1,14 @@
+<launch>
+    <node pkg="ros_tutorial" name="sample_node_name" type="robot_node">
+    <!-- request 4 values for one wall: x1, y1, x2, y2 -->
+    <rosparam param="walls">
+        [-100, -100, 200, -100, -100, 150, 200, 100, -150, 50, -25, -50]
+    </rosparam>
+    <rosparam param="robot_list">
+        [{"name": "wall_e", "x": -150, "y": -150, "laser_on": false, "angle": 45}]
+    </rosparam>
+    </node>
+    <node pkg="ros_tutorial" name="controller" type="wasd_node"/>
+    <!-- if needs to remove default robot use service kill for a specific robot . remove "\" near "-" -->
+    <!-- <node pkg="rosservice" type="rosservice" name="rosservice" args="call \-\-wait /robot2/kill"/> -->
+</launch>

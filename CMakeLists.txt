@@ -207,6 +207,7 @@ install(FILES
 install(PROGRAMS 
   scripts/wasd_node
   scripts/robot_node
+  scripts/square
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

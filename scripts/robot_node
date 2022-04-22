@@ -14,7 +14,6 @@ from ros_tutorial.srv import *
 from ros_tutorial.msg import ObjectsArray, ObjectOnScene
 
 # при спавне робота или стены, проверять, что нет пересечений с другими роботами
-# добавить линии, отображающие координаты
 
 HEIGHT = 500
 WIDTH = 500
@@ -93,7 +92,7 @@ class Robot():
         self.name = name
         self.x = x
         self.y = y
-        self.angle = 0
+        self.angle = angle
         self.frame = frame
         self.init_topics()
         self.scan = Scaner(parent_id=self.name)
@@ -260,10 +259,18 @@ class Ui_Form(QtWidgets.QWidget):
         self.walls.append(self.scene.addLine(WIDTH / 2, -HEIGHT / 2, WIDTH / 2, HEIGHT / 2, self.blackPen))
         self.walls.append(self.scene.addLine(-WIDTH / 2, -HEIGHT / 2, WIDTH / 2, -HEIGHT / 2, self.blackPen))
 
-        # переделать добавление объектов через rosparam
-        self.walls.append(self.scene.addLine(-100, -100, 200, -100, self.blackPen))
-        self.walls.append(self.scene.addLine(-100, 150, 200, 100, self.blackPen))
-        self.walls.append(self.scene.addLine(-150, 50, -25, -50, self.blackPen))
+        walls_list = rospy.search_param("walls")
+        if walls_list:
+            walls_list = rospy.get_param(walls_list)
+            for i in range(0, len(walls_list), 4):
+                self.walls.append(self.scene.addLine(walls_list[i], walls_list[i + 1], walls_list[i + 2], walls_list[i + 3], self.blackPen))        
+        
+        robot_list = rospy.search_param('robot_list')
+        if robot_list:
+            robot_list = rospy.get_param(robot_list)
+            for i in robot_list:
+                self.robots_dict.update({i['name']: Robot(**i)})
+                self.init_service(i['name'])
 
     def do_close(self):
         self.close()
@@ -271,6 +278,7 @@ class Ui_Form(QtWidgets.QWidget):
     def init_ros(self):
         self.node_name = 'robot_node'
         rospy.init_node(self.node_name)
+        self.node_name = rospy.get_name()[1:]
         rospy.Service(f'/{self.node_name}/spawn', Spawn, self.spawn)
         rospy.Service(f'/{self.node_name}/set_wall', SetWall, self.set_wall)
         self.objects_publisher = rospy.Publisher(f'/{self.node_name}/objects', ObjectsArray, queue_size=10)

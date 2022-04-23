@@ -170,10 +170,11 @@ include_directories(
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
-# catkin_install_python(PROGRAMS
-#   scripts/my_python_script
-#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+catkin_install_python(PROGRAMS
+  scripts/square
+  scripts/circle
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
@@ -201,13 +202,14 @@ install(FILES
   simple.launch
   one_robot.launch
   labyrinth.launch
+  circle.launch
+  square.launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 
 install(PROGRAMS 
   scripts/wasd_node
   scripts/robot_node
-  scripts/square
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

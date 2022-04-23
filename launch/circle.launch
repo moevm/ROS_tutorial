@@ -1,0 +1,5 @@
+<launch>
+    <node pkg="ros_tutorial" name="one_robot_node" type="robot_node"/>
+    <node pkg="rosservice" type="rosservice" name="rosservice" args="call --wait /robot2/kill"/>
+    <node pkg="ros_tutorial" name="controller" type="circle"/>
+</launch>

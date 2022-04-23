@@ -132,6 +132,8 @@ class Robot():
         self.set_laser_color_service.shutdown()
 
     def move(self, data):
+        if self.scan.min_range is None or not hasattr(self, 'objects'):
+            return
         self.angle += data.angular.z
         if self.angle >= 360:
             self.angle -= 360

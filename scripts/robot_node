@@ -13,7 +13,6 @@ from PyQt5 import QtCore, QtWidgets, QtGui
 from ros_tutorial.srv import *
 from ros_tutorial.msg import ObjectsArray, ObjectOnScene
 
-# при спавне робота или стены, проверять, что нет пересечений с другими роботами
 
 HEIGHT = 500
 WIDTH = 500
@@ -80,7 +79,6 @@ class Scaner():
 
     def get_laser_points(self, x, y, direction):
         self.points = []
-        # TODO разобраться с отображением точек в rviz
         for current_angle in range(self.start_angle, self.end_angle, self.angle_delta):
             point = self.get_ranges_to_object(x, y, direction + current_angle)
             self.points.append(point)
@@ -184,22 +182,21 @@ class Robot():
             print(err)
 
     def fill_scan_msg(self, msg):
+        scaling = 0.03
+
         msg.header.seq = time.time() - 1
         # NOTE для отображения laser_scan в rviz frame_id должен соответствовать Fixed Frame в Global Options
         msg.header.frame_id = 'map'
         msg.header.stamp.secs = int(time.time())
-
         msg.angle_min = self.scan.start_angle * pi / 180
         msg.angle_max = self.scan.end_angle * pi / 180
         msg.angle_increment = self.scan.angle_delta * pi / 180
-        msg.range_min = self.scan.min_range
+        msg.range_min = self.scan.min_range * scaling
         msg.range_max = self.scan.max_range if self.scan.max_range != -1 else inf
         for i in self.points:
-            point1 = i['point1']
             point2 = i['point2']
-            range = sqrt((point1['x'] - point2['x']) ** 2 + (point1['y'] - point2['y']) ** 2)
-            # TODO разобраться с отображением в rviz
-            msg.ranges.append(range)
+            range = sqrt((self.x - point2['x']) ** 2 + (self.y - point2['y']) ** 2)
+            msg.ranges.append(range * scaling)
         msg.time_increment = time.time() / 1000000000.0
         msg.scan_time = time.time() / 1000000000.0
         return msg

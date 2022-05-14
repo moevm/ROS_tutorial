@@ -63,6 +63,7 @@ class Scaner():
             if i.type == 'robot' and i.name == self.parent_id:
                 continue
             for j in range(0, len(i.points), 2):
+                # TODO функция для проверки на робота
                 if len(i.points) == 4 and j == 2:
                     break
                 point = findIntersection(i.points[j], i.points[(j + 1)], i.points[(j + 2) % 8], i.points[(j + 3) % 8],
@@ -99,6 +100,13 @@ class Robot():
         self.laser_color = (255, 0, 0)
         self.point_size = 4
         self.lines_flag = True
+    
+    def init_topics(self):
+        self.cmd_vel = rospy.Subscriber(f'{self.name}/cmd_vel', Twist, callback=self.move)
+        self.pose = rospy.Publisher(f'{self.name}/pose', Pose, queue_size=10)
+        self.laser_scan_publisher = rospy.Publisher(f'{self.name}/laser_scan', LaserScan, queue_size=10)
+        self.object_subscriber = rospy.Subscriber(f'{rospy.get_name()}/objects', ObjectsArray,
+                                                  callback=self.whats_around_me)
 
     def set_services(self, set_pose, kill):
         self.set_pose_service = set_pose
@@ -158,13 +166,6 @@ class Robot():
                         return
         self.x += dx
         self.y += dy
-
-    def init_topics(self):
-        self.cmd_vel = rospy.Subscriber(f'{self.name}/cmd_vel', Twist, callback=self.move)
-        self.pose = rospy.Publisher(f'{self.name}/pose', Pose, queue_size=10)
-        self.laser_scan_publisher = rospy.Publisher(f'{self.name}/laser_scan', LaserScan, queue_size=10)
-        self.object_subscriber = rospy.Subscriber(f'{rospy.get_name()}/objects', ObjectsArray,
-                                                  callback=self.whats_around_me)
 
     def publish(self):
         # required because changes in the robots_dict do not hate time to be displayed
@@ -281,7 +282,6 @@ class Ui_Form(QtWidgets.QWidget):
         rospy.Service(f'/{self.node_name}/spawn', Spawn, self.spawn)
         rospy.Service(f'/{self.node_name}/set_wall', SetWall, self.set_wall)
         self.objects_publisher = rospy.Publisher(f'/{self.node_name}/objects', ObjectsArray, queue_size=10)
-        # TODO think - добавление новых роботов через rosparam
 
     def init_service(self, name):
         self.robots_dict[name].set_services(

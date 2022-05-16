@@ -22,7 +22,7 @@ VIEW_H_OFFSET = 20
 VIEW_W_OFFSET = 20
 
 
-def findIntersection(x1, y1, x2, y2, x3, y3, x4, y4):
+def find_intersection(x1, y1, x2, y2, x3, y3, x4, y4):
     try:
         ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / (
                 (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1))
@@ -33,6 +33,29 @@ def findIntersection(x1, y1, x2, y2, x3, y3, x4, y4):
         return None
     except ZeroDivisionError:
         return None
+
+
+def find_closest_point(objects, x1, y1, x2, y2, mode, name, self_x=None, self_y=None,near=None):
+    closest_point = {}
+    for j in objects:
+        # TODO функция для проверки на робота
+        if j.type == 'robot' and j.name == name:
+            continue
+        for k in range(0, len(j.points), 2):
+            if len(j.points) == 4 and k == 2:
+                break
+            point = find_intersection(j.points[k], j.points[(k + 1)], j.points[(k + 2) % 8],
+                                        j.points[(k + 3) % 8], x1, y1, x2, y2)
+            if point:
+                if mode == 'laser':
+                    new_dist = sqrt((point['x'] - self_x) ** 2 + (point['y'] - self_y) ** 2)
+                    if new_dist < near:
+                        closest_point['x'] = point['x']
+                        closest_point['y'] = point['y']
+                        near = new_dist
+                else:
+                    return
+    return closest_point
 
 
 class Scaner():
@@ -58,22 +81,7 @@ class Scaner():
         point1 = {'x': x + self.min_range * cos(angle * pi / 180), 'y': y + self.min_range * sin(angle * pi / 180)}
         vector = {'x1': point1['x'], 'y1': point1['y'], 'x2': x + (near) * cos(angle * pi / 180),
                   'y2': y + near * sin(angle * pi / 180)}
-        closest_point = {}
-        for i in self.objects:
-            if i.type == 'robot' and i.name == self.parent_id:
-                continue
-            for j in range(0, len(i.points), 2):
-                # TODO функция для проверки на робота
-                if len(i.points) == 4 and j == 2:
-                    break
-                point = findIntersection(i.points[j], i.points[(j + 1)], i.points[(j + 2) % 8], i.points[(j + 3) % 8],
-                                         vector['x1'], vector['y1'], vector['x2'], vector['y2'])
-                if point:
-                    new_dist = sqrt((point['x'] - x) ** 2 + (point['y'] - y) ** 2)
-                    if new_dist < near:
-                        closest_point['x'] = point['x']
-                        closest_point['y'] = point['y']
-                        near = new_dist
+        closest_point = find_closest_point(self.objects, vector['x1'], vector['y1'], vector['x2'], vector['y2'], 'laser', self.parent_id, x, y, near)
         if closest_point == {}:
             closest_point = {'x': inf, 'y': inf}
         return {'point1': point1, 'point2': closest_point}
@@ -154,16 +162,9 @@ class Robot():
         x2 = [self.x + (self.scan.min_range + dx * 2) * cos((self.angle + i) % 360 * pi / 180) for i in direction]
         y2 = [self.y + (self.scan.min_range + dy * 2) * sin((self.angle + i) % 360 * pi / 180) for i in direction]
         for i in range(len(direction)):
-            for j in self.objects:
-                if j.type == 'robot' and j.name == self.name:
-                    continue
-                for k in range(0, len(j.points), 2):
-                    if len(j.points) == 4 and k == 2:
-                        break
-                    point = findIntersection(j.points[k], j.points[(k + 1)], j.points[(k + 2) % 8],
-                                             j.points[(k + 3) % 8], x[i], y[i], x2[i], y2[i])
-                    if point:
-                        return
+            point = find_closest_point(self.objects, x[i], y[i], x2[i], y2[i], 'move', self.name)
+            if point != {}:
+                return
         self.x += dx
         self.y += dy
 

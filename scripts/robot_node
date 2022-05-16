@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from datetime import datetime
 import sys
 import signal
 import rospkg
@@ -38,10 +39,11 @@ def find_intersection(x1, y1, x2, y2, x3, y3, x4, y4):
 def find_closest_point(objects, x1, y1, x2, y2, mode, name, self_x=None, self_y=None,near=None):
     closest_point = {}
     for j in objects:
-        # TODO функция для проверки на робота
         if j.type == 'robot' and j.name == name:
             continue
         for k in range(0, len(j.points), 2):
+            # выход из цикла, чтобы не выйти за границы списка, если текущий объект \
+            # стена (описывается как [x1,y1,x2,y2]) и текущая позиция 2 
             if len(j.points) == 4 and k == 2:
                 break
             point = find_intersection(j.points[k], j.points[(k + 1)], j.points[(k + 2) % 8],
